@@ -1,0 +1,324 @@
+name: Build Android 16 kernels
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_pad:
+        description: Build OnePlus Pad 2 Pro
+        required: true
+        default: true
+        type: boolean
+      build_ace:
+        description: Build OnePlus Ace 5 Ultra
+        required: true
+        default: true
+        type: boolean
+
+      pad_root:
+        description: "Pad: KernelSU + SuSFS"
+        required: true
+        default: true
+        type: boolean
+      pad_hmbird:
+        description: "Pad: Fengchi scheduler"
+        required: true
+        default: true
+        type: boolean
+      pad_bbg:
+        description: "Pad: Baseband Guard"
+        required: true
+        default: true
+        type: boolean
+      pad_ntsync:
+        description: "Pad: NTSync"
+        required: true
+        default: true
+        type: boolean
+      pad_droidspaces:
+        description: "Pad: DroidSpaces"
+        required: true
+        default: true
+        type: boolean
+      pad_network:
+        description: "Pad: network extensions"
+        required: true
+        default: true
+        type: boolean
+      pad_unicode:
+        description: "Pad: Unicode hardening"
+        required: true
+        default: true
+        type: boolean
+
+      ace_root:
+        description: "Ace: KernelSU + SuSFS"
+        required: true
+        default: true
+        type: boolean
+      ace_hmbird:
+        description: "Ace: Fengchi scheduler"
+        required: true
+        default: true
+        type: boolean
+      ace_bbg:
+        description: "Ace: Baseband Guard"
+        required: true
+        default: true
+        type: boolean
+      ace_ntsync:
+        description: "Ace: NTSync"
+        required: true
+        default: false
+        type: boolean
+      ace_droidspaces:
+        description: "Ace: DroidSpaces"
+        required: true
+        default: false
+        type: boolean
+      ace_network:
+        description: "Ace: network extensions"
+        required: true
+        default: true
+        type: boolean
+      ace_unicode:
+        description: "Ace: Unicode hardening"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve selected devices and lock upstream versions
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Checkout build definitions
+        uses: actions/checkout@v4
+
+      - name: Resolve selected devices and lock upstream versions
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build_pad='${{ inputs.build_pad }}'
+          build_ace='${{ inputs.build_ace }}'
+          [[ "$build_pad" == true || "$build_ace" == true ]] || {
+            echo 'Select at least one device.' >&2
+            exit 2
+          }
+
+          definition_fingerprint=$(
+            git ls-files '.github/workflows/build.yml' 'configs/**' 'manifests/**' 'scripts/**' |
+              sort | xargs sha256sum | sha256sum | awk '{print $1}'
+          )
+          matrix_entries=()
+
+          add_device() {
+            local device=$1 root=$2 hmbird=$3 bbg=$4 ntsync=$5 droidspaces=$6 network=$7 unicode=$8
+            export ENABLE_ROOT=$root ENABLE_HMBIRD=$hmbird ENABLE_BBG=$bbg
+            export ENABLE_NTSYNC=$ntsync ENABLE_DROIDSPACES=$droidspaces
+            export ENABLE_NETWORK=$network ENABLE_UNICODE=$unicode
+
+            scripts/resolve_versions.sh "configs/${device}.env"
+            local lockfile="resolved-${device}.env"
+            local source_fingerprint fingerprint manifest_hash build_tools_sha
+            manifest_hash=$(sha256sum "manifests/$(grep '^MANIFEST=' "configs/${device}.env" | cut -d= -f2)" | awk '{print $1}')
+            build_tools_sha=$(grep '^BUILD_TOOLS_SHA=' "$lockfile" | cut -d= -f2)
+            source_fingerprint=$(
+              {
+                grep -E '^(ONEPLUS_COMMON|ONEPLUS_MODULES)_SHA=' "$lockfile"
+                printf 'MANIFEST_SHA=%s\nBUILD_TOOLS_SHA=%s\n' "$manifest_hash" "$build_tools_sha"
+              } | sha256sum | awk '{print $1}'
+            )
+            fingerprint=$(
+              {
+                grep -E '^(ONEPLUS_COMMON|ONEPLUS_MODULES|KSU|SUSFS|PATCHES|HMBIRD|DROIDSPACES|BBG)_SHA=' "$lockfile"
+                printf 'DEFINITION=%s\nMANIFEST=%s\nROOT=%s\nHMBIRD=%s\nBBG=%s\nNTSYNC=%s\nDROIDSPACES=%s\nNETWORK=%s\nUNICODE=%s\n' \
+                  "$definition_fingerprint" "$manifest_hash" "$root" "$hmbird" "$bbg" "$ntsync" "$droidspaces" "$network" "$unicode"
+              } | sha256sum | awk '{print $1}'
+            )
+            matrix_entries+=("{\"device\":\"$device\",\"fingerprint\":\"$fingerprint\",\"source_fingerprint\":\"$source_fingerprint\",\"enable_root\":$root,\"enable_hmbird\":$hmbird,\"enable_bbg\":$bbg,\"enable_ntsync\":$ntsync,\"enable_droidspaces\":$droidspaces,\"enable_network\":$network,\"enable_unicode\":$unicode}")
+          }
+
+          if [[ "$build_pad" == true ]]; then
+            add_device pad2pro-sm8750 \
+              '${{ inputs.pad_root && 1 || 0 }}' \
+              '${{ inputs.pad_hmbird && 1 || 0 }}' \
+              '${{ inputs.pad_bbg && 1 || 0 }}' \
+              '${{ inputs.pad_ntsync && 1 || 0 }}' \
+              '${{ inputs.pad_droidspaces && 1 || 0 }}' \
+              '${{ inputs.pad_network && 1 || 0 }}' \
+              '${{ inputs.pad_unicode && 1 || 0 }}'
+          fi
+          if [[ "$build_ace" == true ]]; then
+            add_device ace5ultra-mt6991 \
+              '${{ inputs.ace_root && 1 || 0 }}' \
+              '${{ inputs.ace_hmbird && 1 || 0 }}' \
+              '${{ inputs.ace_bbg && 1 || 0 }}' \
+              '${{ inputs.ace_ntsync && 1 || 0 }}' \
+              '${{ inputs.ace_droidspaces && 1 || 0 }}' \
+              '${{ inputs.ace_network && 1 || 0 }}' \
+              '${{ inputs.ace_unicode && 1 || 0 }}'
+          fi
+
+          matrix_json=$(IFS=,; echo "${matrix_entries[*]}")
+          printf 'matrix={"include":[%s]}\n' "$matrix_json" >> "$GITHUB_OUTPUT"
+
+      - name: Upload locked versions
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-upstreams-${{ github.run_id }}
+          path: resolved-*.env
+          if-no-files-found: error
+          retention-days: 2
+
+  build:
+    name: ${{ matrix.device }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    concurrency:
+      group: kernel-${{ matrix.device }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+
+    env:
+      DEVICE: ${{ matrix.device }}
+      SRC_DIR: ${{ github.workspace }}/source-${{ matrix.device }}
+      DEPS_DIR: ${{ github.workspace }}/deps-${{ matrix.device }}
+      OUT_DIR: ${{ github.workspace }}/out-${{ matrix.device }}
+      ARTIFACT_DIR: ${{ github.workspace }}/artifacts-${{ matrix.device }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-${{ matrix.device }}
+      BUILD_TOOLS_CACHE_DIR: ${{ github.workspace }}/build-tools-cache
+      SOURCE_OBJECT_CACHE_DIR: ${{ github.workspace }}/source-object-cache-${{ matrix.device }}
+      CCACHE_MAXSIZE: 3G
+      DEVICE_FINGERPRINT: ${{ matrix.fingerprint }}
+      SOURCE_FINGERPRINT: ${{ matrix.source_fingerprint }}
+      ENABLE_ROOT: ${{ matrix.enable_root }}
+      ENABLE_HMBIRD: ${{ matrix.enable_hmbird }}
+      ENABLE_BBG: ${{ matrix.enable_bbg }}
+      ENABLE_NTSYNC: ${{ matrix.enable_ntsync }}
+      ENABLE_DROIDSPACES: ${{ matrix.enable_droidspaces }}
+      ENABLE_NETWORK: ${{ matrix.enable_network }}
+      ENABLE_UNICODE: ${{ matrix.enable_unicode }}
+
+    steps:
+      - name: Checkout build definitions
+        uses: actions/checkout@v4
+
+      - name: Download locked upstream versions
+        uses: actions/download-artifact@v4
+        with:
+          name: resolved-upstreams-${{ github.run_id }}
+          path: resolved-upstreams
+
+      - name: Load locked versions without re-resolving
+        run: |
+          lockfile="resolved-upstreams/resolved-${DEVICE}.env"
+          [[ -f "$lockfile" ]]
+          cat "$lockfile" >> "$GITHUB_ENV"
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android/sdk /opt/ghc /usr/share/dotnet
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 bc bison build-essential ccache curl flex git jq libelf-dev libssl-dev libxml2-utils lld llvm python3 rsync unzip zip zstd
+          curl --fail --location --retry 5 https://storage.googleapis.com/git-repo-downloads/repo -o /tmp/repo
+          sudo install -m 0755 /tmp/repo /usr/local/bin/repo
+
+      - name: Restore build-tools object cache
+        id: restore-build-tools
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.BUILD_TOOLS_CACHE_DIR }}
+          key: build-tools-v2-${{ runner.os }}-${{ env.BUILD_TOOLS_SHA }}
+
+      - name: Restore source Git object cache
+        id: restore-source
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SOURCE_OBJECT_CACHE_DIR }}
+          key: source-objects-v2-${{ runner.os }}-${{ matrix.device }}-${{ env.SOURCE_FINGERPRINT }}
+          restore-keys: |
+            source-objects-v2-${{ runner.os }}-${{ matrix.device }}-
+
+      - name: Restore pinned ZyC toolchain cache
+        if: matrix.device == 'pad2pro-sm8750'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DEPS_DIR }}/zyc-clang
+          key: zyc-v1-${{ runner.os }}-${{ env.ZYC_VERSION }}
+
+      - name: Sync locked official OnePlus source
+        run: scripts/sync_source.sh
+
+      - name: Save build-tools object cache
+        if: success() && steps.restore-build-tools.outputs.cache-hit != 'true' && steps.restore-source.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.BUILD_TOOLS_CACHE_DIR }}
+          key: build-tools-v2-${{ runner.os }}-${{ env.BUILD_TOOLS_SHA }}
+
+      - name: Save source Git object cache
+        if: success() && steps.restore-source.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SOURCE_OBJECT_CACHE_DIR }}
+          key: source-objects-v2-${{ runner.os }}-${{ matrix.device }}-${{ env.SOURCE_FINGERPRINT }}
+
+      - name: Restore ccache
+        id: restore-ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-v4-${{ runner.os }}-${{ matrix.device }}-${{ env.DEVICE_FINGERPRINT }}
+          restore-keys: |
+            ccache-v4-${{ runner.os }}-${{ matrix.device }}-
+
+      - name: Apply selected features
+        run: scripts/apply_features.sh
+
+      - name: Build and validate Image
+        run: scripts/build_kernel.sh
+
+      - name: Package AnyKernel3 and metadata
+        run: scripts/package.sh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.device }}-${{ github.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-v4-${{ runner.os }}-${{ matrix.device }}-${{ env.DEVICE_FINGERPRINT }}
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.device }}-${{ github.run_id }}
+          path: |
+            ${{ env.OUT_DIR }}/build.log
+            ${{ env.OUT_DIR }}/final.config
+            resolved-upstreams/resolved-${{ matrix.device }}.env
+          if-no-files-found: ignore
+          retention-days: 14
