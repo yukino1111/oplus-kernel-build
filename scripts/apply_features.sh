@@ -39,6 +39,44 @@ apply_strict() {
   fi
 }
 
+apply_susfs_kernel() {
+  local patch_file=$1 rc=0
+  echo "Applying $(basename "$patch_file")"
+  patch --batch --forward --fuzz=0 -p1 < "$patch_file" || rc=$?
+  [[ $rc == 0 || $rc == 1 ]] || return "$rc"
+
+  # OnePlus keeps its fs trace-hook include between the upstream include block
+  # and thaw_super_locked(), so the SuSFS super.c declaration hunk has no exact
+  # context match. Add that hunk semantically while preserving the vendor hook.
+  if [[ -f fs/super.c.rej ]]; then
+    grep -q '#include <linux/susfs_def.h>' fs/super.c.rej
+    grep -q 'susfs_is_current_ksu_domain' fs/super.c.rej
+    [[ $(grep -c '^#include <linux/fs_context.h>$' fs/super.c) == 1 ]]
+    [[ $(grep -c '^#include "internal.h"$' fs/super.c) == 1 ]]
+    sed -i '/^#include <linux\/fs_context.h>$/a\
+#ifdef CONFIG_KSU_SUSFS\
+#include <linux/susfs_def.h>\
+#endif // #ifdef CONFIG_KSU_SUSFS' fs/super.c
+    sed -i '/^#include "internal.h"$/a\
+\
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+extern bool susfs_is_current_ksu_domain(void);\
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT' fs/super.c
+    rm fs/super.c.rej
+  fi
+
+  if find . -name '*.rej' -print -quit | grep -q .; then
+    echo "Unexpected SuSFS reject files" >&2
+    find . -name '*.rej' -print >&2
+    exit 1
+  fi
+  grep -q '^#include <linux/susfs_def.h>$' fs/super.c
+  grep -q '^extern bool susfs_is_current_ksu_domain(void);$' fs/super.c
+  grep -q '^extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;$' fs/super.c
+  grep -q '^#include <trace/hooks/fs.h>$' fs/super.c
+}
+
 apply_hmbird() {
   local patch_file=$1 rc=0
   echo "Applying device-specific $(basename "$patch_file")"
@@ -232,7 +270,7 @@ if [[ $ENABLE_ROOT == 1 ]] && ! grep -q 'unsigned int nr_subpages = __PAGE_SIZE 
   susfs_compat=1
 fi
 if [[ $ENABLE_ROOT == 1 ]]; then
-  apply_strict "$SUSFS_DIR/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
+  apply_susfs_kernel "$SUSFS_DIR/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
 fi
 if [[ $ENABLE_ROOT == 1 && $susfs_compat == 1 ]]; then
   sed -i '/unsigned int nr_subpages = __PAGE_SIZE \/ PAGE_SIZE;/d; /pagemap_entry_t \*res = NULL;/d' fs/proc/task_mmu.c
