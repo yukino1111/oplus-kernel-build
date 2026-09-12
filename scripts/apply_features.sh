@@ -195,7 +195,7 @@ if [[ $DEVICE_ID == pad2pro-sm8750 && $ENABLE_DROIDSPACES == 1 ]]; then
 fi
 
 if [[ $ENABLE_ROOT == 1 ]]; then
-  # Official KernelSU dev integration, pinned before any source modification.
+  # Official KernelSU main integration, locked before any source modification.
   ln -sfn "$(realpath --relative-to="$COMMON_DIR/drivers" "$KSU_DIR/kernel")" "$COMMON_DIR/drivers/kernelsu"
   grep -q 'CONFIG_KSU.*kernelsu' "$COMMON_DIR/drivers/Makefile" || printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> "$COMMON_DIR/drivers/Makefile"
   grep -q 'drivers/kernelsu/Kconfig' "$COMMON_DIR/drivers/Kconfig" || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' "$COMMON_DIR/drivers/Kconfig"

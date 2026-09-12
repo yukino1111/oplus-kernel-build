@@ -13,7 +13,7 @@ ENABLE_DROIDSPACES=${ENABLE_DROIDSPACES:-0}
 ENABLE_NETWORK=${ENABLE_NETWORK:-1}
 ENABLE_UNICODE=${ENABLE_UNICODE:-1}
 
-# KernelSU's Kbuild unshallows its pinned repository before compiling and
+# KernelSU's Kbuild unshallows its locked repository before compiling and
 # derives the embedded version from the full commit count. Recompute the same
 # value here so the ZIP name and build-info match the actual kernel binary.
 if [[ $ENABLE_ROOT == 1 ]]; then
@@ -185,7 +185,7 @@ else
 fi
 ROOT_FEATURE=""
 ROOT_DISABLED=""
-if [[ $ENABLE_ROOT == 1 ]]; then ROOT_FEATURE="KernelSU official dev, SuSFS"; else ROOT_DISABLED=", KernelSU, SuSFS"; fi
+if [[ $ENABLE_ROOT == 1 ]]; then ROOT_FEATURE="KernelSU official main, SuSFS"; else ROOT_DISABLED=", KernelSU, SuSFS"; fi
 HMBIRD_FEATURE=""
 HMBIRD_DISABLED=""
 if [[ $ENABLE_HMBIRD == 1 ]]; then HMBIRD_FEATURE=", Fengchi/HMBIRD"; else HMBIRD_DISABLED=", Fengchi/HMBIRD"; fi
@@ -219,12 +219,12 @@ OnePlus kernel source SHA: $ONEPLUS_COMMON_SHA
 OnePlus modules source: $MODULES_URL
 OnePlus modules source SHA: $ONEPLUS_MODULES_SHA
 
-KernelSU branch: dev (pinned tested pair)
+KernelSU branch: main (latest at workflow resolution)
 KernelSU full SHA: $KSU_SHA
 KernelSU version: $KSU_VERSION
 
 SuSFS source: https://gitlab.com/simonpunk/susfs4ksu
-SuSFS branch: gki-android15-6.6
+SuSFS branch: gki-android15-6.6 (latest at workflow resolution)
 SuSFS full SHA: $SUSFS_SHA
 SuSFS version: $SUSFS_VERSION
 

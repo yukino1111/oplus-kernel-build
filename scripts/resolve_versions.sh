@@ -49,13 +49,12 @@ else
   ONEPLUS_MODULES_SHA=$(ls_remote "$MODULES_URL" "refs/heads/$OS_BRANCH")
 fi
 
-# KernelSU and SuSFS are intentionally pinned as a tested pair. Never resolve
-# their moving branches independently: an otherwise harmless SuSFS update can
-# stop applying to the selected KernelSU tree.
+# Resolve the requested upstream development lines at the start of each run,
+# then pass their exact SHAs to the build jobs so a run remains reproducible.
 if [[ -n ${KSU_SHA:-} ]]; then
   [[ $KSU_SHA =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid pinned KernelSU SHA" >&2; exit 2; }
 else
-  KSU_SHA=$(ls_remote https://github.com/tiann/KernelSU.git refs/heads/dev)
+  KSU_SHA=$(ls_remote https://github.com/tiann/KernelSU.git refs/heads/main)
 fi
 if [[ -n ${SUSFS_SHA:-} ]]; then
   [[ $SUSFS_SHA =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid pinned SuSFS SHA" >&2; exit 2; }
@@ -97,7 +96,7 @@ RESOLVED_FILE="$GITHUB_WORKSPACE/resolved-${DEVICE_ID}.env"
 
 echo "Locked OnePlus common: $ONEPLUS_COMMON_SHA"
 echo "Locked OnePlus modules: $ONEPLUS_MODULES_SHA"
-echo "Locked KernelSU dev: $KSU_SHA"
+echo "Locked KernelSU main: $KSU_SHA"
 echo "Locked SuSFS: $SUSFS_SHA"
 echo "Locked WildKernels patches: $PATCHES_SHA"
 echo "Locked HMBIRD: $HMBIRD_SHA"
